@@ -1,0 +1,105 @@
+const express = require('express');
+const pool = require('../config/db');
+const { authRequired } = require('../middleware/auth');
+const { upload, RULES, detectType, moveToFolder, discard } = require('../middleware/upload');
+const { removeUploadedFile } = require('../utils/files');
+
+const router = express.Router();
+
+const TYPES = ['image', 'video', 'audio'];
+const SELECT_MATERIAL = `
+  SELECT m.id, m.title, m.description, m.type, m.file_path, m.created_at,
+         m.category_id, c.name AS category, m.author_id, u.login AS author
+    FROM materials m
+    JOIN categories c ON c.id = m.category_id
+    JOIN users u ON u.id = m.author_id`;
+
+// GET /api/materials — список материалов (необязательный фильтр ?type=image|video|audio)
+router.get('/', async (req, res) => {
+  const { type } = req.query;
+  if (type !== undefined && !TYPES.includes(type)) {
+    return res.status(400).json({ error: 'Неверный тип материала. Допустимо: image, video, audio' });
+  }
+  const [rows] = type
+    ? await pool.query(`${SELECT_MATERIAL} WHERE m.type = ? ORDER BY m.created_at DESC, m.id DESC`, [type])
+    : await pool.query(`${SELECT_MATERIAL} ORDER BY m.created_at DESC, m.id DESC`);
+  res.json(rows);
+});
+
+// GET /api/materials/:id — один материал
+router.get('/:id', async (req, res) => {
+  if (!/^\d+$/.test(req.params.id)) {
+    return res.status(404).json({ error: 'Материал не найден' });
+  }
+  const [rows] = await pool.query(`${SELECT_MATERIAL} WHERE m.id = ?`, [req.params.id]);
+  if (!rows.length) {
+    return res.status(404).json({ error: 'Материал не найден' });
+  }
+  res.json(rows[0]);
+});
+
+// POST /api/materials — добавление материала (multipart/form-data, только для авторизованных)
+// Поля: title, description, category_id, type, file (для видео вместо файла можно передать link)
+router.post('/', authRequired, upload.single('file'), async (req, res) => {
+  const { title, description, category_id, type, link } = req.body || {};
+  const file = req.file;
+  const fail = (msg) => {
+    discard(file);
+    return res.status(400).json({ error: msg });
+  };
+
+  if (!title || !String(title).trim()) return fail('Укажите название материала');
+  if (String(title).length > 150) return fail('Название не должно быть длиннее 150 символов');
+  if (description && String(description).length > 2000) return fail('Описание не должно быть длиннее 2000 символов');
+  if (!TYPES.includes(type)) return fail('Выберите тип материала: изображение, видео или аудио');
+  if (!/^\d+$/.test(String(category_id || ''))) return fail('Выберите категорию');
+
+  const [cats] = await pool.query('SELECT id FROM categories WHERE id = ?', [category_id]);
+  if (!cats.length) return fail('Выбранная категория не существует');
+
+  let filePath;
+  if (file) {
+    if (detectType(file) !== type) return fail('Формат файла не соответствует выбранному типу материала');
+    if (file.size > RULES[type].max) {
+      return fail(`Файл слишком большой. Максимальный размер: ${RULES[type].max / 1024 / 1024} МБ`);
+    }
+    filePath = moveToFolder(file, type);
+  } else if (type === 'video' && link) {
+    if (!/^https?:\/\/\S+$/i.test(link) || link.length > 500) return fail('Некорректная ссылка на видео');
+    filePath = link;
+  } else {
+    return fail(type === 'video' ? 'Загрузите видеофайл или укажите ссылку на видео' : 'Загрузите файл');
+  }
+
+  try {
+    const [result] = await pool.query(
+      'INSERT INTO materials (title, description, type, category_id, file_path, author_id) VALUES (?, ?, ?, ?, ?, ?)',
+      [String(title).trim(), description ? String(description).trim() : null, type, category_id, filePath, req.user.id]
+    );
+    const [rows] = await pool.query(`${SELECT_MATERIAL} WHERE m.id = ?`, [result.insertId]);
+    res.status(201).json(rows[0]);
+  } catch (e) {
+    removeUploadedFile(filePath);
+    throw e;
+  }
+});
+
+// DELETE /api/materials/:id — удаление материала (автор или администратор)
+router.delete('/:id', authRequired, async (req, res) => {
+  if (!/^\d+$/.test(req.params.id)) {
+    return res.status(404).json({ error: 'Материал не найден' });
+  }
+  const [rows] = await pool.query('SELECT id, author_id, file_path FROM materials WHERE id = ?', [req.params.id]);
+  if (!rows.length) {
+    return res.status(404).json({ error: 'Материал не найден' });
+  }
+  const m = rows[0];
+  if (m.author_id !== req.user.id && req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Можно удалять только свои материалы' });
+  }
+  await pool.query('DELETE FROM materials WHERE id = ?', [m.id]);
+  removeUploadedFile(m.file_path);
+  res.json({ message: 'Материал удалён' });
+});
+
+module.exports = router;
