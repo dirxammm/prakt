@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Галерея — Мультимедийная галерея</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div id="header-placeholder"></div>
+
+  <main class="container-wide">
+    <h1 class="section-title">Галерея.</h1>
+
+    <div class="filter-bar">
+      <button class="filter" data-type="">Все</button>
+      <button class="filter" data-type="image">Изображения</button>
+      <button class="filter" data-type="video">Видео</button>
+      <button class="filter" data-type="audio">Аудио</button>
+      <input class="search-input" type="text" id="search" placeholder="Поиск по названию">
+    </div>
+
+    <div class="notice" id="notice"></div>
+    <div id="list">
+      <div class="empty-state">Загрузка…</div>
+    </div>
+  </main>
+
+  <div id="footer-placeholder"></div>
+
+  <script src="/js/api.js"></script>
+  <script>
+    MG.init({
+      onReady: async () => {
+        let currentType = MG.getParam('type') || '';
+        let allItems = [];
+
+        MG.qsa('.filter').forEach(btn => {
+          if (btn.getAttribute('data-type') === currentType) btn.classList.add('active');
+          btn.addEventListener('click', async () => {
+            MG.qsa('.filter').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            currentType = btn.getAttribute('data-type');
+            const url = new URL(window.location.href);
+            if (currentType) url.searchParams.set('type', currentType);
+            else url.searchParams.delete('type');
+            history.replaceState({}, '', url);
+            await load();
+          });
+        });
+
+        MG.qs('#search').addEventListener('input', (ev) => {
+          const q = ev.target.value.trim().toLowerCase();
+          renderList(allItems.filter(m => !q || m.title.toLowerCase().includes(q)));
+        });
+
+        async function load() {
+          MG.qs('#list').innerHTML = '<div class="empty-state">Загрузка…</div>';
+          try {
+            allItems = await MG.api.materials(currentType || undefined);
+            renderList(allItems);
+          } catch (e) {
+            MG.showNotice('#notice', e.message || 'Не удалось загрузить', 'error');
+          }
+        }
+
+        function renderList(items) {
+          const box = MG.qs('#list');
+          if (!items.length) {
+            box.innerHTML = '<div class="empty-state">Материалов не найдено.</div>';
+            return;
+          }
+          box.innerHTML = '<div class="cards">' + items.map(m => `
+            <article class="card">
+              <a href="/material.html?id=${m.id}">
+                <div class="card-preview">
+                  ${m.type === 'image'
+                    ? `<img src="${MG.escapeHtml(m.file_path)}" alt="${MG.escapeHtml(m.title)}">`
+                    : MG.typeIcon(m.type)}
+                </div>
+                <div class="card-body">
+                  <div class="card-title">${MG.escapeHtml(m.title)}</div>
+                  <div class="card-meta">
+                    <span class="cat">${MG.escapeHtml(m.category)}</span>
+                    ${MG.typeLabel(m.type)} · ${MG.escapeHtml(m.author)}
+                  </div>
+                </div>
+              </a>
+            </article>
+          `).join('') + '</div>';
+        }
+
+        await load();
+      }
+    });
+  </script>
+</body>
+</html>
