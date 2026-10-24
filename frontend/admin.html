@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Админ-панель — Мультимедийная галерея</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div id="header-placeholder"></div>
+
+  <main class="container">
+    <h1 class="hero-title" style="font-size:48px;margin-bottom:8px;">Админ-панель.</h1>
+    <p class="subtitle">Пользователи и все материалы.</p>
+
+    <div class="notice" id="notice"></div>
+
+    <h2 class="panel-title" style="margin-top:48px;">Пользователи</h2>
+    <div class="panel admin-table" id="users-box"><div class="empty-state">Загрузка…</div></div>
+
+    <h2 class="panel-title" style="margin-top:56px;">Все материалы</h2>
+    <div class="panel admin-table" id="materials-box"><div class="empty-state">Загрузка…</div></div>
+  </main>
+
+  <div id="footer-placeholder"></div>
+
+  <script src="/js/api.js"></script>
+  <script>
+    MG.init({
+      requireAuth: true,
+      onReady: async () => {
+        if (!MG.auth.isAdmin()) {
+          MG.showNotice('#notice', 'Доступ только для администратора', 'error');
+          MG.qs('#users-box').innerHTML = '';
+          MG.qs('#materials-box').innerHTML = '';
+          return;
+        }
+        await loadUsers();
+        await loadMaterials();
+
+        async function loadUsers() {
+          try {
+            const users = await MG.api.adminUsers();
+            MG.qs('#users-box').innerHTML = users.length ? `
+              <table>
+                <tr><th>#</th><th>Логин</th><th>E-mail</th><th>Роль</th><th>Регистрация</th></tr>
+                ${users.map(u => `
+                  <tr>
+                    <td>${u.id}</td>
+                    <td>${MG.escapeHtml(u.login)}</td>
+                    <td>${MG.escapeHtml(u.email)}</td>
+                    <td>${u.role === 'admin' ? 'Админ' : 'Пользователь'}</td>
+                    <td>${MG.formatDate(u.created_at)}</td>
+                  </tr>`).join('')}
+              </table>` : '<div class="empty-state">Пользователей нет</div>';
+          } catch (e) { MG.showNotice('#notice', e.message, 'error'); }
+        }
+
+        async function loadMaterials() {
+          try {
+            const items = await MG.api.adminMaterials();
+            const box = MG.qs('#materials-box');
+            box.innerHTML = items.length ? `
+              <table>
+                <tr><th>#</th><th>Название</th><th>Тип</th><th>Категория</th><th>Автор</th><th>Дата</th><th></th></tr>
+                ${items.map(m => `
+                  <tr>
+                    <td>${m.id}</td>
+                    <td><a href="/material.html?id=${m.id}">${MG.escapeHtml(m.title)}</a></td>
+                    <td>${MG.typeLabel(m.type)}</td>
+                    <td>${MG.escapeHtml(m.category)}</td>
+                    <td>${MG.escapeHtml(m.author)}</td>
+                    <td>${MG.formatDate(m.created_at)}</td>
+                    <td><button class="btn btn-link" style="color:var(--danger);" data-del="${m.id}">Удалить</button></td>
+                  </tr>`).join('')}
+              </table>` : '<div class="empty-state">Материалов нет</div>';
+            MG.qsa('[data-del]').forEach(b => b.addEventListener('click', async () => {
+              const id = b.getAttribute('data-del');
+              if (!confirm('Удалить материал?')) return;
+              try { await MG.api.adminDeleteMaterial(id); await loadMaterials(); }
+              catch (e) { MG.showNotice('#notice', e.message, 'error'); }
+            }));
+          } catch (e) { MG.showNotice('#notice', e.message, 'error'); }
+        }
+      }
+    });
+  </script>
+</body>
+</html>

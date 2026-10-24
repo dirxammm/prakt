@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Материал — Мультимедийная галерея</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div id="header-placeholder"></div>
+
+  <main class="container">
+    <div class="notice" id="notice"></div>
+    <div class="material-view" id="view">
+      <div class="empty-state">Загрузка…</div>
+    </div>
+  </main>
+
+  <div id="footer-placeholder"></div>
+
+  <script src="/js/api.js"></script>
+  <script>
+    MG.init({
+      onReady: async () => {
+        const id = MG.getParam('id');
+        if (!id) {
+          MG.qs('#view').innerHTML = '<div class="empty-state">Материал не указан. <a href="/gallery.html">Перейти в галерею ›</a></div>';
+          return;
+        }
+        try {
+          const m = await MG.api.material(id);
+          renderMaterial(m);
+        } catch (e) {
+          if (e.status === 404) {
+            MG.qs('#view').innerHTML = '<div class="empty-state">Материал не найден. <a href="/gallery.html">В галерею ›</a></div>';
+          } else {
+            MG.showNotice('#notice', e.message || 'Ошибка загрузки', 'error');
+          }
+        }
+
+        function renderMaterial(m) {
+          const u = MG.auth.getUser();
+          const canDelete = u && (u.id === m.author_id || u.role === 'admin');
+          const file = MG.escapeHtml(m.file_path);
+          let media = '';
+          if (m.type === 'image') {
+            media = `<img src="${file}" alt="${MG.escapeHtml(m.title)}">`;
+          } else if (m.type === 'video') {
+            media = /^https?:\/\//i.test(m.file_path)
+              ? `<p><a href="${file}" target="_blank" rel="noopener" class="btn">Открыть видео</a></p>`
+              : `<video controls preload="metadata" src="${file}">Видео не поддерживается браузером.</video>`;
+          } else if (m.type === 'audio') {
+            media = `<audio controls preload="metadata" src="${file}">Аудио не поддерживается браузером.</audio>`;
+          }
+          MG.qs('#view').innerHTML = `
+            <h1>${MG.escapeHtml(m.title)}</h1>
+            <div class="meta-row">
+              <span class="cat">${MG.escapeHtml(m.category)}</span>
+              ${MG.typeLabel(m.type)} · ${MG.escapeHtml(m.author)} · ${MG.formatDate(m.created_at)}
+            </div>
+            <div class="media">${media}</div>
+            ${m.description ? `<div class="description">${MG.escapeHtml(m.description).replace(/\n/g, '<br>')}</div>` : ''}
+            <div style="margin-top: 48px; display: flex; gap: 16px;">
+              <a href="/gallery.html" class="btn btn-ghost">‹ В галерею</a>
+              ${canDelete ? `<button class="btn btn-link" style="color:var(--danger);" id="delete-btn">Удалить</button>` : ''}
+            </div>
+          `;
+          if (canDelete) {
+            MG.qs('#delete-btn').addEventListener('click', async () => {
+              if (!confirm('Удалить материал без возможности восстановления?')) return;
+              try {
+                await MG.api.deleteMaterial(m.id);
+                window.location.href = '/gallery.html';
+              } catch (e) {
+                MG.showNotice('#notice', e.message || 'Не удалось удалить', 'error');
+              }
+            });
+          }
+        }
+      }
+    });
+  </script>
+</body>
+</html>
