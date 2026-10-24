@@ -46,6 +46,11 @@
     let data = null;
     try { data = text ? JSON.parse(text) : null; } catch (e) { data = text; }
     if (!res.ok) {
+      // токен недействителен или просрочен: очищаем данные входа и отправляем на страницу входа
+      if (res.status === 401 && token && !path.startsWith('/api/auth/')) {
+        auth.clear();
+        window.location.href = '/login.html?next=' + encodeURIComponent(location.pathname + location.search);
+      }
       const err = new Error((data && data.error) || 'Ошибка сервера');
       err.status = res.status;
       err.data = data;
@@ -70,8 +75,11 @@
     categories() {
       return request('/api/categories');
     },
-    materials(type) {
-      return request('/api/materials' + (type ? '?type=' + encodeURIComponent(type) : ''));
+    // materials() — все; materials('audio') — по типу; materials({ type, category, q }) — с фильтрами и поиском
+    materials(params) {
+      const p = typeof params === 'string' ? { type: params } : params || {};
+      const qs = new URLSearchParams(Object.entries(p).filter(([, v]) => v)).toString();
+      return request('/api/materials' + (qs ? '?' + qs : ''));
     },
     material(id) {
       return request('/api/materials/' + encodeURIComponent(id));

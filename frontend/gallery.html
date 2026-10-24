@@ -18,6 +18,7 @@
       <button class="filter" data-type="video">Видео</button>
       <button class="filter" data-type="audio">Аудио</button>
       <input class="search-input" type="text" id="search" placeholder="Поиск по названию">
+      <select class="search-input" id="category"><option value="">Все категории</option></select>
     </div>
 
     <div class="notice" id="notice"></div>
@@ -49,18 +50,39 @@
           });
         });
 
-        MG.qs('#search').addEventListener('input', (ev) => {
-          const q = ev.target.value.trim().toLowerCase();
-          renderList(allItems.filter(m => !q || m.title.toLowerCase().includes(q)));
+        let timer;
+        MG.qs('#search').addEventListener('input', () => {
+          clearTimeout(timer);
+          timer = setTimeout(load, 300);
         });
 
+        const categorySelect = MG.qs('#category');
+        categorySelect.addEventListener('change', load);
+        try {
+          (await MG.api.categories()).forEach(c => {
+            const o = document.createElement('option');
+            o.value = c.id;
+            o.textContent = c.name;
+            categorySelect.appendChild(o);
+          });
+          categorySelect.value = MG.getParam('category') || '';
+        } catch (e) { /* список категорий необязателен */ }
+
+        let seq = 0;
         async function load() {
+          const my = ++seq;
           MG.qs('#list').innerHTML = '<div class="empty-state">Загрузка…</div>';
           try {
-            allItems = await MG.api.materials(currentType || undefined);
+            allItems = await MG.api.materials({
+              type: currentType,
+              category: MG.qs('#category').value,
+              q: MG.qs('#search').value.trim(),
+            });
+            if (my !== seq) return;
             renderList(allItems);
           } catch (e) {
             MG.showNotice('#notice', e.message || 'Не удалось загрузить', 'error');
+            MG.qs('#list').innerHTML = '';
           }
         }
 
