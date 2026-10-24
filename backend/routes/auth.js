@@ -31,6 +31,9 @@ router.post('/register', async (req, res) => {
   if (String(password).length < 6) {
     return res.status(400).json({ error: 'Пароль должен содержать не менее 6 символов' });
   }
+  if (Buffer.byteLength(String(password)) > 72) {
+    return res.status(400).json({ error: 'Пароль слишком длинный (не более 72 байт)' });
+  }
 
   const [exists] = await pool.query('SELECT login, email FROM users WHERE login = ? OR email = ?', [login, email]);
   if (exists.length) {

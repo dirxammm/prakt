@@ -28,7 +28,7 @@
    ```
 5. Создать учётную запись администратора:
    ```bash
-   npm run create-admin
+   npm run create-admin -- admin admin@mail.ru ВашПароль
    ```
 6. Запустить сервер:
    ```bash
