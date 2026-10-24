@@ -1,5 +1,11 @@
 const path = require('path');
+const fs = require('fs');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
+
+if (!process.env.JWT_SECRET) {
+  console.error('Ошибка: не задан JWT_SECRET в файле backend/.env');
+  process.exit(1);
+}
 const express = require('express');
 const cors = require('cors');
 const pool = require('./config/db');
@@ -12,7 +18,12 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Загруженные файлы и клиентская часть
-app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
+app.use(
+  '/uploads',
+  express.static(path.join(__dirname, '..', 'uploads'), {
+    setHeaders: (res) => res.setHeader('X-Content-Type-Options', 'nosniff'),
+  })
+);
 app.use(express.static(FRONTEND));
 
 // Маршруты API
@@ -32,6 +43,7 @@ app.use((req, res) => {
 
 // Обработка ошибок
 app.use((err, req, res, next) => {
+  if (req.file) fs.unlink(req.file.path, () => {});
   if (err.code === 'LIMIT_FILE_SIZE') return res.status(400).json({ error: 'Файл слишком большой' });
   if (err.code === 'INVALID_FILE_TYPE') return res.status(400).json({ error: err.message });
   if (err.type === 'entity.parse.failed') return res.status(400).json({ error: 'Некорректный JSON в теле запроса' });

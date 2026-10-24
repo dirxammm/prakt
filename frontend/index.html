@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Мультимедийная галерея</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div id="header-placeholder"></div>
+
+  <section class="hero">
+    <h1 class="hero-title">Пространство<br>для вашей коллекции.</h1>
+    <p class="hero-subtitle">Изображения, видео и аудиозаписи — собранные в одном месте, разложенные по категориям, доступные одним кликом.</p>
+    <div>
+      <a href="/gallery.html" class="btn">Открыть галерею</a>
+      <a href="/register.html" class="hero-link">Создать аккаунт ›</a>
+    </div>
+  </section>
+
+  <section class="hero-section-dark">
+    <h2 class="section-title">Последние материалы</h2>
+    <div id="latest" class="cards" style="max-width:1200px;margin:0 auto;">
+      <div class="empty-state">Загрузка…</div>
+    </div>
+  </section>
+
+  <div id="footer-placeholder"></div>
+
+  <script src="/js/api.js"></script>
+  <script>
+    MG.init({
+      onReady: async () => {
+        const box = MG.qs('#latest');
+        try {
+          const items = (await MG.api.materials()).slice(0, 8);
+          if (!items.length) {
+            box.innerHTML = '<div class="empty-state">Пока нет материалов. Будьте первым.</div>';
+            return;
+          }
+          box.innerHTML = items.map(m => `
+            <article class="card">
+              <a href="/material.html?id=${m.id}">
+                <div class="card-preview">
+                  ${m.type === 'image'
+                    ? `<img src="${MG.escapeHtml(m.file_path)}" alt="${MG.escapeHtml(m.title)}">`
+                    : MG.typeIcon(m.type)}
+                </div>
+                <div class="card-body">
+                  <div class="card-title">${MG.escapeHtml(m.title)}</div>
+                  <div class="card-meta">
+                    <span class="cat">${MG.escapeHtml(m.category)}</span>
+                    ${MG.escapeHtml(m.author)}
+                  </div>
+                </div>
+              </a>
+            </article>
+          `).join('');
+        } catch (e) {
+          box.innerHTML = '<div class="empty-state">Не удалось загрузить материалы.</div>';
+        }
+      }
+    });
+  </script>
+</body>
+</html>

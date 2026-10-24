@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Вход — Мультимедийная галерея</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div id="header-placeholder"></div>
+
+  <main class="narrow">
+    <h1 class="hero-title" style="font-size:40px;margin-bottom:8px;text-align:center;">С возвращением.</h1>
+    <p class="subtitle" style="text-align:center;">Войдите в свой аккаунт.</p>
+
+    <div class="notice" id="notice"></div>
+
+    <form class="form" id="login-form" novalidate>
+      <div class="field">
+        <label for="login">Логин</label>
+        <input type="text" id="login" name="login" autocomplete="username" required>
+        <div class="field-error" data-for="login"></div>
+      </div>
+      <div class="field">
+        <label for="password">Пароль</label>
+        <input type="password" id="password" name="password" autocomplete="current-password" required>
+        <div class="field-error" data-for="password"></div>
+      </div>
+      <button class="btn" type="submit" id="submit-btn" style="width:100%;margin-top:8px;">Войти</button>
+    </form>
+
+    <p style="margin-top:24px; font-size: 15px; color: var(--text-secondary); text-align:center;">
+      Нет аккаунта? <a href="/register.html">Создать ›</a>
+    </p>
+  </main>
+
+  <div id="footer-placeholder"></div>
+
+  <script src="/js/api.js"></script>
+  <script>
+    MG.init({
+      onReady: () => {
+        if (MG.auth.isAuthorized()) { window.location.href = '/profile.html'; return; }
+        const form = MG.qs('#login-form');
+        const btn = MG.qs('#submit-btn');
+
+        function setError(name, text) {
+          const el = MG.qs(`[data-for="${name}"]`);
+          if (el) el.textContent = text || '';
+        }
+        function clearErrors() { MG.qsa('.field-error').forEach(e => e.textContent = ''); }
+
+        form.addEventListener('submit', async (ev) => {
+          ev.preventDefault();
+          clearErrors(); MG.hideNotice('#notice');
+
+          const login = MG.qs('#login').value.trim();
+          const password = MG.qs('#password').value;
+          let ok = true;
+          if (!login) { setError('login', 'Введите логин'); ok = false; }
+          if (!password) { setError('password', 'Введите пароль'); ok = false; }
+          if (!ok) return;
+
+          btn.disabled = true;
+          try {
+            const data = await MG.api.login(login, password);
+            MG.auth.save(data.token, data.user);
+            const next = MG.getParam('next') || '/profile.html';
+            window.location.href = next;
+          } catch (e) {
+            MG.showNotice('#notice', e.message || 'Ошибка входа', 'error');
+            btn.disabled = false;
+          }
+        });
+      }
+    });
+  </script>
+</body>
+</html>

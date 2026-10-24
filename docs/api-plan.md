@@ -10,12 +10,12 @@
 | POST /api/auth/logout | авторизованный | выход (токен удаляется на клиенте) |
 | GET /api/users/me | авторизованный | данные пользователя и его материалы |
 | GET /api/categories | все | список категорий |
-| GET /api/materials | все | список материалов, фильтр `?type=image\|video\|audio` |
+| GET /api/materials | все | список материалов; параметры `type` (image, video, audio), `category` (номер категории), `q` (часть названия) |
 | GET /api/materials/:id | все | один материал |
 | POST /api/materials | авторизованный | добавление: title, description, category_id, type, file или link (видео) |
 | DELETE /api/materials/:id | автор или админ | удаление материала |
-| GET /api/admin/users | админ | список пользователей |
-| GET /api/admin/materials | админ | все материалы |
+| GET /api/admin/users | админ | список пользователей с количеством материалов (`materials_count`) |
+| GET /api/admin/materials | админ | все материалы; параметры `type` и `q` |
 | DELETE /api/admin/materials/:id | админ | удаление любого материала |
 
 Типы материалов: `image`, `video`, `audio`.

@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Добавить материал — Мультимедийная галерея</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div id="header-placeholder"></div>
+
+  <main class="narrow">
+    <h1 class="hero-title" style="font-size:40px;margin-bottom:8px;text-align:center;">Поделитесь.</h1>
+    <p class="subtitle" style="text-align:center;">Добавьте изображение, видео или аудиозапись.</p>
+
+    <div class="notice" id="notice"></div>
+
+    <form class="form" id="upload-form" novalidate>
+      <div class="field">
+        <label for="title">Название</label>
+        <input type="text" id="title" name="title" maxlength="150" required>
+        <div class="field-error" data-for="title"></div>
+      </div>
+      <div class="field">
+        <label for="description">Описание</label>
+        <textarea id="description" name="description" maxlength="2000"></textarea>
+      </div>
+      <div class="field">
+        <label for="category_id">Категория</label>
+        <select id="category_id" name="category_id" required>
+          <option value="">Загрузка…</option>
+        </select>
+        <div class="field-error" data-for="category_id"></div>
+      </div>
+      <div class="field">
+        <label for="type">Тип материала</label>
+        <select id="type" name="type" required>
+          <option value="image">Изображение</option>
+          <option value="video">Видео</option>
+          <option value="audio">Аудио</option>
+        </select>
+        <div class="field-error" data-for="type"></div>
+      </div>
+      <div class="field" id="file-field">
+        <label for="file">Файл</label>
+        <input type="file" id="file" name="file">
+        <div class="field-hint" id="file-hint">JPG, PNG, WEBP — до 10 МБ</div>
+        <div class="field-error" data-for="file"></div>
+      </div>
+      <div class="field" id="link-field" style="display:none">
+        <label for="link">Ссылка на видео</label>
+        <input type="url" id="link" name="link" placeholder="https://…">
+        <div class="field-hint">Либо загрузите файл, либо укажите ссылку.</div>
+        <div class="field-error" data-for="link"></div>
+      </div>
+      <button class="btn" type="submit" id="submit-btn" style="width:100%;margin-top:8px;">Добавить</button>
+    </form>
+  </main>
+
+  <div id="footer-placeholder"></div>
+
+  <script src="/js/api.js"></script>
+  <script>
+    MG.init({
+      requireAuth: true,
+      onReady: async () => {
+        const typeSel = MG.qs('#type');
+        const fileHint = MG.qs('#file-hint');
+        const linkField = MG.qs('#link-field');
+        const HINTS = {
+          image: 'JPG, PNG, WEBP — до 10 МБ',
+          video: 'MP4 — до 100 МБ (или ссылка ниже)',
+          audio: 'MP3, WAV — до 20 МБ',
+        };
+
+        function syncType() {
+          const t = typeSel.value;
+          fileHint.textContent = HINTS[t] || '';
+          linkField.style.display = t === 'video' ? '' : 'none';
+        }
+        typeSel.addEventListener('change', syncType);
+        syncType();
+
+        try {
+          const cats = await MG.api.categories();
+          MG.qs('#category_id').innerHTML =
+            '<option value="">— выберите категорию —</option>' +
+            cats.map(c => `<option value="${c.id}">${MG.escapeHtml(c.name)}</option>`).join('');
+        } catch (e) {
+          MG.showNotice('#notice', 'Не удалось загрузить категории', 'error');
+        }
+
+        function setError(name, text) {
+          const el = MG.qs(`[data-for="${name}"]`);
+          if (el) el.textContent = text || '';
+        }
+        function clearErrors() { MG.qsa('.field-error').forEach(e => e.textContent = ''); }
+
+        MG.qs('#upload-form').addEventListener('submit', async (ev) => {
+          ev.preventDefault();
+          clearErrors(); MG.hideNotice('#notice');
+
+          const title = MG.qs('#title').value.trim();
+          const type = typeSel.value;
+          const category_id = MG.qs('#category_id').value;
+          const file = MG.qs('#file').files[0];
+          const link = MG.qs('#link').value.trim();
+
+          let ok = true;
+          if (!title) { setError('title', 'Введите название'); ok = false; }
+          if (!category_id) { setError('category_id', 'Выберите категорию'); ok = false; }
+          if (!type) { setError('type', 'Выберите тип материала'); ok = false; }
+          if (type === 'video') {
+            if (!file && !link) { setError('file', 'Загрузите файл или укажите ссылку'); ok = false; }
+          } else if (!file) {
+            setError('file', 'Выберите файл для загрузки'); ok = false;
+          }
+          if (!ok) return;
+
+          const fd = new FormData();
+          fd.append('title', title);
+          fd.append('description', MG.qs('#description').value.trim());
+          fd.append('category_id', category_id);
+          fd.append('type', type);
+          if (file) fd.append('file', file);
+          else if (link) fd.append('link', link);
+
+          const btn = MG.qs('#submit-btn');
+          btn.disabled = true;
+          try {
+            const m = await MG.api.uploadMaterial(fd);
+            window.location.href = '/material.html?id=' + m.id;
+          } catch (e) {
+            MG.showNotice('#notice', e.message || 'Не удалось добавить материал', 'error');
+            btn.disabled = false;
+          }
+        });
+      }
+    });
+  </script>
+</body>
+</html>
