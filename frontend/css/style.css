@@ -274,7 +274,7 @@ h2 { font-size: 24px; font-weight: 600; letter-spacing: -0.022em; margin: 40px 0
 /* ---------- Карточки материалов ---------- */
 .cards {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr));
   gap: 32px;
 }
 .card {
@@ -369,6 +369,7 @@ table tr:last-child td { border-bottom: none; }
   padding: 40px;
 }
 .panel + .panel { margin-top: 24px; }
+.panel { overflow-x: auto; }
 .panel-plain {
   background: var(--bg);
   padding: 0;
