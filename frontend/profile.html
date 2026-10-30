@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Личный кабинет — Мультимедийная галерея</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div id="header-placeholder"></div>
+
+  <main class="container">
+    <h1 class="hero-title" style="font-size:48px;margin-bottom:8px;">Личный кабинет.</h1>
+    <p class="subtitle">Данные вашего аккаунта и материалы, которые вы добавили.</p>
+
+    <div class="notice" id="notice"></div>
+
+    <div class="panel" id="user-panel">
+      <div class="empty-state">Загрузка…</div>
+    </div>
+
+    <h2 class="panel-title" style="margin-top:72px;">Мои материалы</h2>
+    <div id="materials">
+      <div class="empty-state">Загрузка…</div>
+    </div>
+  </main>
+
+  <div id="footer-placeholder"></div>
+
+  <script src="/js/api.js"></script>
+  <script>
+    MG.init({
+      requireAuth: true,
+      onReady: async () => {
+        try {
+          const data = await MG.api.me();
+          const u = data.user;
+          MG.qs('#user-panel').innerHTML = `
+            <table>
+              <tr><th style="width:180px">Логин</th><td>${MG.escapeHtml(u.login)}</td></tr>
+              <tr><th>E-mail</th><td>${MG.escapeHtml(u.email)}</td></tr>
+              <tr><th>Роль</th><td>${u.role === 'admin' ? 'Администратор' : 'Пользователь'}</td></tr>
+              <tr><th>Дата регистрации</th><td>${MG.formatDate(u.created_at)}</td></tr>
+            </table>
+            <div style="margin-top:24px"><a href="/upload.html" class="btn">+ Добавить материал</a></div>
+          `;
+          renderMaterials(data.materials);
+        } catch (e) {
+          if (e.status === 401) { MG.auth.clear(); window.location.href = '/login.html'; return; }
+          MG.showNotice('#notice', e.message || 'Ошибка загрузки данных', 'error');
+        }
+
+        function renderMaterials(items) {
+          const box = MG.qs('#materials');
+          if (!items.length) {
+            box.innerHTML = '<div class="empty-state">Вы ещё не добавили материалов. <a href="/upload.html">Добавить ›</a></div>';
+            return;
+          }
+          box.innerHTML = '<div class="cards">' + items.map(m => cardHtml(m)).join('') + '</div>';
+          MG.qsa('[data-delete]').forEach(btn => btn.addEventListener('click', onDelete));
+        }
+
+        function cardHtml(m) {
+          return `
+            <article class="card">
+              <a href="/material.html?id=${m.id}">
+                <div class="card-preview">
+                  ${m.type === 'image'
+                    ? `<img src="${MG.escapeHtml(m.file_path)}" alt="${MG.escapeHtml(m.title)}">`
+                    : MG.typeIcon(m.type)}
+                </div>
+                <div class="card-body">
+                  <div class="card-title">${MG.escapeHtml(m.title)}</div>
+                  <div class="card-meta">
+                    <span class="cat">${MG.escapeHtml(m.category)}</span>
+                    ${MG.typeLabel(m.type)} · ${MG.formatDate(m.created_at)}
+                  </div>
+                  <button class="btn btn-link btn-sm" style="margin-top:12px;color:var(--danger);" data-delete="${m.id}">Удалить</button>
+                </div>
+              </a>
+            </article>`;
+        }
+
+        async function onDelete(ev) {
+          ev.preventDefault(); ev.stopPropagation();
+          const id = ev.target.getAttribute('data-delete');
+          const ok = await MG.confirmDialog('Удалить материал без возможности восстановления?');
+          if (!ok) return;
+          try {
+            await MG.api.deleteMaterial(id);
+            MG.toast('Материал удалён', 'success');
+            const data = await MG.api.me();
+            renderMaterials(data.materials);
+          } catch (e) {
+            MG.toast(e.message || 'Не удалось удалить', 'error');
+          }
+        }
+      }
+    });
+  </script>
+</body>
+</html>

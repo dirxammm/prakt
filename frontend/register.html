@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Регистрация — Мультимедийная галерея</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div id="header-placeholder"></div>
+
+  <main class="narrow">
+    <h1 class="hero-title" style="font-size:40px;margin-bottom:8px;text-align:center;">Создайте аккаунт.</h1>
+    <p class="subtitle" style="text-align:center;">Чтобы добавлять материалы и собирать свою коллекцию.</p>
+
+    <div class="notice" id="notice"></div>
+
+    <form class="form" id="register-form" novalidate>
+      <div class="field">
+        <label for="login">Логин</label>
+        <input type="text" id="login" name="login" autocomplete="username" required>
+        <div class="field-hint">3–30 символов: латинские буквы, цифры, «_»</div>
+        <div class="field-error" data-for="login"></div>
+      </div>
+      <div class="field">
+        <label for="email">E-mail</label>
+        <input type="email" id="email" name="email" autocomplete="email" required>
+        <div class="field-error" data-for="email"></div>
+      </div>
+      <div class="field">
+        <label for="password">Пароль</label>
+        <input type="password" id="password" name="password" autocomplete="new-password" required>
+        <div class="field-hint">Не менее 6 символов</div>
+        <div class="field-error" data-for="password"></div>
+      </div>
+      <div class="field">
+        <label for="password2">Повторите пароль</label>
+        <input type="password" id="password2" name="password2" autocomplete="new-password" required>
+        <div class="field-error" data-for="password2"></div>
+      </div>
+      <button class="btn" type="submit" id="submit-btn" style="width:100%;margin-top:8px;">Зарегистрироваться</button>
+    </form>
+
+    <p style="margin-top:24px; font-size: 15px; color: var(--text-secondary); text-align:center;">
+      Уже есть аккаунт? <a href="/login.html">Войти ›</a>
+    </p>
+  </main>
+
+  <div id="footer-placeholder"></div>
+
+  <script src="/js/api.js"></script>
+  <script>
+    MG.init({
+      onReady: () => {
+        if (MG.auth.isAuthorized()) { window.location.href = '/profile.html'; return; }
+        const form = MG.qs('#register-form');
+        const btn = MG.qs('#submit-btn');
+
+        function setError(name, text) {
+          const el = MG.qs(`[data-for="${name}"]`);
+          if (el) el.textContent = text || '';
+        }
+        function clearErrors() { MG.qsa('.field-error').forEach(e => e.textContent = ''); }
+
+        form.addEventListener('submit', async (ev) => {
+          ev.preventDefault();
+          clearErrors(); MG.hideNotice('#notice');
+
+          const login = MG.qs('#login').value.trim();
+          const email = MG.qs('#email').value.trim();
+          const password = MG.qs('#password').value;
+          const password2 = MG.qs('#password2').value;
+
+          let ok = true;
+          if (!login) { setError('login', 'Введите логин'); ok = false; }
+          else if (!/^[A-Za-z0-9_]{3,30}$/.test(login)) {
+            setError('login', 'Логин: от 3 до 30 символов, латиница, цифры, «_»'); ok = false;
+          }
+          if (!email) { setError('email', 'Введите e-mail'); ok = false; }
+          else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            setError('email', 'Некорректный e-mail'); ok = false;
+          }
+          if (!password) { setError('password', 'Введите пароль'); ok = false; }
+          else if (password.length < 6) { setError('password', 'Пароль: не менее 6 символов'); ok = false; }
+          if (password !== password2) { setError('password2', 'Пароли не совпадают'); ok = false; }
+          if (!ok) return;
+
+          btn.disabled = true;
+          try {
+            await MG.api.register(login, email, password);
+            const data = await MG.api.login(login, password);
+            MG.auth.save(data.token, data.user);
+            window.location.href = '/profile.html';
+          } catch (e) {
+            MG.showNotice('#notice', e.message || 'Ошибка регистрации', 'error');
+            btn.disabled = false;
+          }
+        });
+      }
+    });
+  </script>
+</body>
+</html>
