@@ -65,9 +65,9 @@
           try {
             const data = await MG.api.login(login, password);
             MG.auth.save(data.token, data.user);
-            const nextParam = MG.getParam('next') || '';
-            // разрешены только пути своего сайта (/page.html), внешние адреса игнорируются
-            const next = /^\/(?![\/\\])/.test(nextParam) ? nextParam : '/profile.html';
+            // Разрешаем только внутренние относительные пути — иначе
+            // параметр ?next=https://… мог бы увести на внешний сайт.
+            const next = MG.safeNext(MG.getParam('next')) || '/profile.html';
             window.location.href = next;
           } catch (e) {
             MG.showNotice('#notice', e.message || 'Ошибка входа', 'error');

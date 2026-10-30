@@ -46,10 +46,15 @@
     let data = null;
     try { data = text ? JSON.parse(text) : null; } catch (e) { data = text; }
     if (!res.ok) {
-      // токен недействителен или просрочен: очищаем данные входа и отправляем на страницу входа
-      if (res.status === 401 && token && !path.startsWith('/api/auth/')) {
+      // Недействительный или истёкший токен — очищаем данные входа и
+      // переходим на вход, чтобы пользователь не остался «авторизованным».
+      // Исключение — сама страница входа и выход (там токена может уже не быть).
+      if (res.status === 401 && token &&
+          location.pathname !== '/login.html' && !path.includes('/auth/logout')) {
         auth.clear();
-        window.location.href = '/login.html?next=' + encodeURIComponent(location.pathname + location.search);
+        if (!/\/(login|register)\.html$/.test(location.pathname)) {
+          window.location.href = '/login.html?next=' + encodeURIComponent(location.pathname + location.search);
+        }
       }
       const err = new Error((data && data.error) || 'Ошибка сервера');
       err.status = res.status;
@@ -75,11 +80,15 @@
     categories() {
       return request('/api/categories');
     },
-    // materials() — все; materials('audio') — по типу; materials({ type, category, q }) — с фильтрами и поиском
     materials(params) {
-      const p = typeof params === 'string' ? { type: params } : params || {};
-      const qs = new URLSearchParams(Object.entries(p).filter(([, v]) => v)).toString();
-      return request('/api/materials' + (qs ? '?' + qs : ''));
+      // params: { type?, category?, q? } или строка-type для совместимости
+      if (!params) return request('/api/materials');
+      if (typeof params === 'string') params = { type: params };
+      const q = [];
+      if (params.type)     q.push('type=' + encodeURIComponent(params.type));
+      if (params.category) q.push('category=' + encodeURIComponent(params.category));
+      if (params.q)        q.push('q=' + encodeURIComponent(params.q));
+      return request('/api/materials' + (q.length ? '?' + q.join('&') : ''));
     },
     material(id) {
       return request('/api/materials/' + encodeURIComponent(id));
@@ -93,8 +102,12 @@
     adminUsers() {
       return request('/api/admin/users');
     },
-    adminMaterials() {
-      return request('/api/admin/materials');
+    adminMaterials(params) {
+      if (!params) return request('/api/admin/materials');
+      const q = [];
+      if (params.type) q.push('type=' + encodeURIComponent(params.type));
+      if (params.q)    q.push('q=' + encodeURIComponent(params.q));
+      return request('/api/admin/materials' + (q.length ? '?' + q.join('&') : ''));
     },
     adminDeleteMaterial(id) {
       return request('/api/admin/materials/' + encodeURIComponent(id), { method: 'DELETE' });
@@ -135,6 +148,63 @@
   }
   function getParam(name) {
     return new URL(window.location.href).searchParams.get(name);
+  }
+
+  // Безопасный next: разрешаем только внутренние относительные пути (/*),
+  // чтобы параметр ?next=https://… не увёл пользователя наружу.
+  function safeNext(value) {
+    if (!value) return null;
+    if (!/^\/(?![\/\\])[^\s\u0000-\u001f]*$/.test(value)) return null; // не «//», не «/\», без пробелов и управляющих символов
+    return value;
+  }
+
+  // Toast-уведомления (замена alert). Контейнер создаётся при первом вызове.
+  function toast(message, kind) {
+    let box = qs('#toast-container');
+    if (!box) {
+      box = document.createElement('div');
+      box.id = 'toast-container';
+      box.className = 'toast-container';
+      document.body.appendChild(box);
+    }
+    const el = document.createElement('div');
+    el.className = 'toast toast-' + (kind || 'info');
+    el.textContent = message;
+    box.appendChild(el);
+    requestAnimationFrame(() => el.classList.add('show'));
+    setTimeout(() => {
+      el.classList.remove('show');
+      setTimeout(() => el.remove(), 300);
+    }, 3200);
+  }
+
+  // Модальное подтверждение (замена confirm). Возвращает Promise<boolean>.
+  function confirmDialog(message, { confirmText = 'Удалить', cancelText = 'Отмена', danger = true } = {}) {
+    return new Promise((resolve) => {
+      const overlay = document.createElement('div');
+      overlay.className = 'modal-overlay';
+      overlay.innerHTML = `
+        <div class="modal" role="dialog" aria-modal="true">
+          <p class="modal-message">${escapeHtml(message)}</p>
+          <div class="modal-actions">
+            <button class="btn btn-ghost" data-cancel>${escapeHtml(cancelText)}</button>
+            <button class="btn ${danger ? 'btn-danger' : ''}" data-confirm>${escapeHtml(confirmText)}</button>
+          </div>
+        </div>`;
+      document.body.appendChild(overlay);
+      requestAnimationFrame(() => overlay.classList.add('show'));
+      const close = (value) => {
+        overlay.classList.remove('show');
+        setTimeout(() => overlay.remove(), 200);
+        resolve(value);
+      };
+      overlay.querySelector('[data-cancel]').addEventListener('click', () => close(false));
+      overlay.querySelector('[data-confirm]').addEventListener('click', () => close(true));
+      overlay.addEventListener('click', (e) => { if (e.target === overlay) close(false); });
+      document.addEventListener('keydown', function esc(ev) {
+        if (ev.key === 'Escape') { document.removeEventListener('keydown', esc); close(false); }
+      });
+    });
   }
 
   // Шапка: отрисовка меню и состояния авторизации
@@ -186,7 +256,10 @@
 
   function requireAuth(redirect) {
     if (!auth.isAuthorized()) {
-      window.location.href = (redirect || '/login.html') + '?next=' + encodeURIComponent(location.pathname + location.search);
+      // В next кладём только относительный путь — иначе ссылка на внешний сайт
+      // могла бы увести пользователя после входа.
+      const next = location.pathname + location.search;
+      window.location.href = (redirect || '/login.html') + '?next=' + encodeURIComponent(safeNext(next) || '/profile.html');
       return false;
     }
     return true;
@@ -203,5 +276,6 @@
   }
 
   window.MG = { api, auth, qs, qsa, formatDate, escapeHtml, typeIcon, typeLabel,
-                showNotice, hideNotice, getParam, requireAuth, init };
+                showNotice, hideNotice, getParam, safeNext, toast, confirmDialog,
+                requireAuth, init };
 })();

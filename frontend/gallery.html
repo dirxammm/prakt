@@ -17,8 +17,10 @@
       <button class="filter" data-type="image">Изображения</button>
       <button class="filter" data-type="video">Видео</button>
       <button class="filter" data-type="audio">Аудио</button>
-      <input class="search-input" type="text" id="search" placeholder="Поиск по названию">
-      <select class="search-input" id="category"><option value="">Все категории</option></select>
+      <select class="filter-select" id="category" aria-label="Категория">
+        <option value="">Все категории</option>
+      </select>
+      <input class="search-input" type="text" id="search" placeholder="Поиск по названию" autocomplete="off">
     </div>
 
     <div class="notice" id="notice"></div>
@@ -34,62 +36,75 @@
     MG.init({
       onReady: async () => {
         let currentType = MG.getParam('type') || '';
-        let allItems = [];
+        let currentCategory = MG.getParam('category') || '';
+        let currentQ = MG.getParam('q') || '';
+        let searchTimer = null;
 
+        // Пилюли фильтра по типу
         MG.qsa('.filter').forEach(btn => {
           if (btn.getAttribute('data-type') === currentType) btn.classList.add('active');
-          btn.addEventListener('click', async () => {
+          btn.addEventListener('click', () => {
             MG.qsa('.filter').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             currentType = btn.getAttribute('data-type');
-            const url = new URL(window.location.href);
-            if (currentType) url.searchParams.set('type', currentType);
-            else url.searchParams.delete('type');
-            history.replaceState({}, '', url);
-            await load();
+            syncUrl();
+            load();
           });
         });
 
-        let timer;
-        MG.qs('#search').addEventListener('input', () => {
-          clearTimeout(timer);
-          timer = setTimeout(load, 300);
-        });
-
-        const categorySelect = MG.qs('#category');
-        categorySelect.addEventListener('change', load);
+        // Селект категорий — загружаем список и ставим текущее значение
         try {
-          (await MG.api.categories()).forEach(c => {
-            const o = document.createElement('option');
-            o.value = c.id;
-            o.textContent = c.name;
-            categorySelect.appendChild(o);
+          const cats = await MG.api.categories();
+          const sel = MG.qs('#category');
+          sel.innerHTML = '<option value="">Все категории</option>' +
+            cats.map(c => `<option value="${c.id}">${MG.escapeHtml(c.name)}</option>`).join('');
+          if (currentCategory) sel.value = currentCategory;
+          sel.addEventListener('change', () => {
+            currentCategory = sel.value;
+            syncUrl();
+            load();
           });
-          categorySelect.value = MG.getParam('category') || '';
-        } catch (e) { /* список категорий необязателен */ }
+        } catch (e) { /* молча — фильтр просто не появится */ }
 
-        let seq = 0;
+        // Поиск: отправляем на сервер с задержкой 350 мс
+        const search = MG.qs('#search');
+        search.value = currentQ;
+        search.addEventListener('input', (ev) => {
+          currentQ = ev.target.value.trim();
+          clearTimeout(searchTimer);
+          searchTimer = setTimeout(() => { syncUrl(); load(); }, 350);
+        });
+
+        function syncUrl() {
+          const url = new URL(window.location.href);
+          const set = (k, v) => v ? url.searchParams.set(k, v) : url.searchParams.delete(k);
+          set('type', currentType);
+          set('category', currentCategory);
+          set('q', currentQ);
+          history.replaceState({}, '', url);
+        }
+
         async function load() {
-          const my = ++seq;
           MG.qs('#list').innerHTML = '<div class="empty-state">Загрузка…</div>';
           try {
-            allItems = await MG.api.materials({
-              type: currentType,
-              category: MG.qs('#category').value,
-              q: MG.qs('#search').value.trim(),
+            const items = await MG.api.materials({
+              type: currentType || undefined,
+              category: currentCategory || undefined,
+              q: currentQ || undefined,
             });
-            if (my !== seq) return;
-            renderList(allItems);
+            renderList(items);
           } catch (e) {
             MG.showNotice('#notice', e.message || 'Не удалось загрузить', 'error');
-            MG.qs('#list').innerHTML = '';
           }
         }
 
         function renderList(items) {
           const box = MG.qs('#list');
           if (!items.length) {
-            box.innerHTML = '<div class="empty-state">Материалов не найдено.</div>';
+            const hint = currentQ
+              ? `По запросу «${MG.escapeHtml(currentQ)}» ничего не найдено.`
+              : 'Материалов не найдено.';
+            box.innerHTML = `<div class="empty-state">${hint}</div>`;
             return;
           }
           box.innerHTML = '<div class="cards">' + items.map(m => `
@@ -97,7 +112,7 @@
               <a href="/material.html?id=${m.id}">
                 <div class="card-preview">
                   ${m.type === 'image'
-                    ? `<img src="${MG.escapeHtml(m.file_path)}" alt="${MG.escapeHtml(m.title)}">`
+                    ? `<img src="${MG.escapeHtml(m.file_path)}" alt="${MG.escapeHtml(m.title)}" loading="lazy">`
                     : MG.typeIcon(m.type)}
                 </div>
                 <div class="card-body">

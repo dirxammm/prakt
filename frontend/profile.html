@@ -84,13 +84,15 @@
         async function onDelete(ev) {
           ev.preventDefault(); ev.stopPropagation();
           const id = ev.target.getAttribute('data-delete');
-          if (!confirm('Удалить материал без возможности восстановления?')) return;
+          const ok = await MG.confirmDialog('Удалить материал без возможности восстановления?');
+          if (!ok) return;
           try {
             await MG.api.deleteMaterial(id);
+            MG.toast('Материал удалён', 'success');
             const data = await MG.api.me();
             renderMaterials(data.materials);
           } catch (e) {
-            MG.showNotice('#notice', e.message || 'Не удалось удалить', 'error');
+            MG.toast(e.message || 'Не удалось удалить', 'error');
           }
         }
       }

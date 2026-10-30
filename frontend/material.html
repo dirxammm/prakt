@@ -14,6 +14,12 @@
     <div class="material-view" id="view">
       <div class="empty-state">Загрузка…</div>
     </div>
+
+    <!-- Похожие материалы той же категории -->
+    <section id="related" style="display:none;margin-top:88px;">
+      <h2 class="panel-title" id="related-title">Похожие материалы</h2>
+      <div class="cards" id="related-cards"></div>
+    </section>
   </main>
 
   <div id="footer-placeholder"></div>
@@ -30,9 +36,13 @@
         try {
           const m = await MG.api.material(id);
           renderMaterial(m);
+          loadRelated(m);
         } catch (e) {
           if (e.status === 404) {
             MG.qs('#view').innerHTML = '<div class="empty-state">Материал не найден. <a href="/gallery.html">В галерею ›</a></div>';
+          } else if (e.status === 401) {
+            MG.auth.clear();
+            window.location.href = '/login.html';
           } else {
             MG.showNotice('#notice', e.message || 'Ошибка загрузки', 'error');
           }
@@ -44,18 +54,19 @@
           const file = MG.escapeHtml(m.file_path);
           let media = '';
           if (m.type === 'image') {
-            media = `<img src="${file}" alt="${MG.escapeHtml(m.title)}">`;
+            // Кликабельное изображение — открывает lightbox
+            media = `<button class="media-image-btn" id="open-lightbox" aria-label="Открыть изображение"><img src="${file}" alt="${MG.escapeHtml(m.title)}" loading="eager"></button>`;
           } else if (m.type === 'video') {
             media = /^https?:\/\//i.test(m.file_path)
               ? `<p><a href="${file}" target="_blank" rel="noopener" class="btn">Открыть видео</a></p>`
-              : `<video controls preload="metadata" src="${file}">Видео не поддерживается браузером.</video>`;
+              : `<video controls preload="metadata" src="${file}" playsinline>Видео не поддерживается браузером.</video>`;
           } else if (m.type === 'audio') {
             media = `<audio controls preload="metadata" src="${file}">Аудио не поддерживается браузером.</audio>`;
           }
           MG.qs('#view').innerHTML = `
             <h1>${MG.escapeHtml(m.title)}</h1>
             <div class="meta-row">
-              <span class="cat">${MG.escapeHtml(m.category)}</span>
+              <a href="/gallery.html?category=${m.category_id}" class="cat">${MG.escapeHtml(m.category)}</a>
               ${MG.typeLabel(m.type)} · ${MG.escapeHtml(m.author)} · ${MG.formatDate(m.created_at)}
             </div>
             <div class="media">${media}</div>
@@ -65,17 +76,70 @@
               ${canDelete ? `<button class="btn btn-link" style="color:var(--danger);" id="delete-btn">Удалить</button>` : ''}
             </div>
           `;
+          if (m.type === 'image') setupLightbox(m);
           if (canDelete) {
             MG.qs('#delete-btn').addEventListener('click', async () => {
-              if (!confirm('Удалить материал без возможности восстановления?')) return;
+              const ok = await MG.confirmDialog('Удалить материал без возможности восстановления?');
+              if (!ok) return;
               try {
                 await MG.api.deleteMaterial(m.id);
-                window.location.href = '/gallery.html';
+                MG.toast('Материал удалён', 'success');
+                setTimeout(() => window.location.href = '/gallery.html', 600);
               } catch (e) {
-                MG.showNotice('#notice', e.message || 'Не удалось удалить', 'error');
+                MG.toast(e.message || 'Не удалось удалить', 'error');
               }
             });
           }
+        }
+
+        function setupLightbox(m) {
+          const btn = MG.qs('#open-lightbox');
+          if (!btn) return;
+          btn.addEventListener('click', () => {
+            const box = document.createElement('div');
+            box.className = 'lightbox';
+            box.innerHTML = `
+              <button class="lightbox-close" aria-label="Закрыть">×</button>
+              <img src="${MG.escapeHtml(m.file_path)}" alt="${MG.escapeHtml(m.title)}">
+            `;
+            document.body.appendChild(box);
+            requestAnimationFrame(() => box.classList.add('show'));
+            const close = () => {
+              box.classList.remove('show');
+              setTimeout(() => box.remove(), 200);
+            };
+            box.querySelector('.lightbox-close').addEventListener('click', close);
+            box.addEventListener('click', (ev) => { if (ev.target === box) close(); });
+            document.addEventListener('keydown', function esc(e) {
+              if (e.key === 'Escape') { document.removeEventListener('keydown', esc); close(); }
+            });
+          });
+        }
+
+        async function loadRelated(m) {
+          try {
+            const items = await MG.api.materials({ category: m.category_id });
+            const others = items.filter(x => x.id !== m.id).slice(0, 4);
+            if (!others.length) return;
+            const sec = MG.qs('#related');
+            MG.qs('#related-title').textContent = 'Ещё в категории «' + m.category + '»';
+            MG.qs('#related-cards').innerHTML = others.map(x => `
+              <article class="card">
+                <a href="/material.html?id=${x.id}">
+                  <div class="card-preview">
+                    ${x.type === 'image'
+                      ? `<img src="${MG.escapeHtml(x.file_path)}" alt="${MG.escapeHtml(x.title)}" loading="lazy">`
+                      : MG.typeIcon(x.type)}
+                  </div>
+                  <div class="card-body">
+                    <div class="card-title">${MG.escapeHtml(x.title)}</div>
+                    <div class="card-meta">${MG.typeLabel(x.type)} · ${MG.escapeHtml(x.author)}</div>
+                  </div>
+                </a>
+              </article>
+            `).join('');
+            sec.style.display = '';
+          } catch (e) { /* молча — блок просто не покажется */ }
         }
       }
     });
